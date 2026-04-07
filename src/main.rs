@@ -30,6 +30,15 @@ enum Commands {
     Daemon,
     /// Watch for cmd/python windows stealing focus — log and emit events to brain
     Guard,
+    /// Scan Windows Event Logs for indicators of compromise
+    Ioc {
+        /// Minutes to look back (default: 1440 = 24h)
+        #[arg(short, long, default_value = "1440")]
+        last: u32,
+        /// Minimum severity: info, low, medium, high, critical
+        #[arg(short, long)]
+        severity: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -51,6 +60,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::Guard) => {
             modules::focus_guard::run().await?;
+        }
+        Some(Commands::Ioc { last, severity }) => {
+            modules::ioc_monitor::show_iocs(last, severity.as_deref()).await?;
         }
         None => {
             // Default: show quick status
