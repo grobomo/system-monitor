@@ -6,7 +6,7 @@ use axum::routing::get;
 use axum::Router;
 use chrono::Local;
 use colored::Colorize;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::{HashSet, VecDeque};
 use std::io::Write;
 use std::path::Path;

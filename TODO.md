@@ -78,6 +78,9 @@
 - [x] T024: GET /api/health — liveness check with uptime, event count, last event timestamp
 - [x] T025: Command normalizer — strips PIDs, temp paths, quotes; extracts az cli, python scripts, node scripts, powershell commands
 
+## Phase 8: Code Quality
+- [ ] T026: Fix all compiler warnings — unused imports, unused variables, dead code fields
+
 ## Future Work
 - [ ] Implement `status` command with real system metrics (CPU, memory, disk, network)
 - [ ] Replace polling daemon with ETW real-time process events
@@ -88,14 +91,14 @@
 - [x] Publish to GitHub (grobomo) — https://github.com/grobomo/system-monitor
 - [ ] System driver for enforcement (future phase — hide/block windows, not just observe)
 
-## Session State (2026-04-07 session 2)
+## Session State (2026-04-07 session 3)
 - Published to GitHub: https://github.com/grobomo/system-monitor
-- T021-T022: Dashboard UX fixes — click-to-expand detail rows, no hover layout shift, smart command summaries
-- T023-T025: Brain integration API — /api/summary (repeat offenders + anomalies), /api/health, command normalizer
-- Removed hardcoded PROJECTS_DIR, now uses dirs::home_dir() at runtime
-- Identified focus-steal root cause: github-agent service.bat process guard spawns visible cmd.exe (TODO written in github-agent)
-- Guard running, dashboard live at localhost:9847
-- Next: umbrella modules T013-T016, then T018 brain consumer (unified-brain side)
+- T021-T025: Dashboard UX + brain API — all complete
+- T015: IOC monitor merged (PR #1) — wevtutil/PowerShell, System log scanning, CLI + API + guard integration
+- Guard running in background, dashboard at localhost:9847
+- Remaining unchecked: T013 (vpn-monitor), T014 (disk-monitor), T016 (daily digest), T018 (brain consumer)
+- Future work: status command, ETW replacement, UAC tracking, baseline deviation
+- All code on main, no open branches
 
 ## Build Notes
 - MSVC Build Tools 2022 + Windows 11 SDK 26100 installed

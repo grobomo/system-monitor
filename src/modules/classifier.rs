@@ -1,6 +1,7 @@
 use crate::modules::process_tree::{ProcessInfo, ProcessSnapshot};
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Classification {
     /// Known-safe: signed system binary from expected parent
     Safe,
@@ -8,11 +9,12 @@ pub enum Classification {
     Claude(String),
     /// Not in known-good list, but not suspicious either
     Unknown,
-    /// Matches suspicious patterns
-    Suspicious(SuspicionLevel, String),
+    /// Matches suspicious patterns (level used by brain integration for severity routing)
+    Suspicious(#[allow(dead_code)] SuspicionLevel, String),
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum SuspicionLevel {
     Low,
     Medium,

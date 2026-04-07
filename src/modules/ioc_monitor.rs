@@ -1,4 +1,3 @@
-use chrono::Local;
 use colored::Colorize;
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -282,7 +281,7 @@ pub async fn show_iocs(last_minutes: u32, min_severity: Option<&str>) -> anyhow:
 // === T015e: Guard Integration ===
 
 /// Poll for IOCs periodically (called from focus_guard's main loop)
-pub fn poll_iocs(buffer: &IocBuffer, last_minutes: u32) -> Vec<IocEvent> {
+pub fn poll_iocs(_buffer: &IocBuffer, last_minutes: u32) -> Vec<IocEvent> {
     let security_ids: Vec<u32> = IOC_DEFINITIONS
         .iter()
         .filter(|d| d.log_name == "Security")
