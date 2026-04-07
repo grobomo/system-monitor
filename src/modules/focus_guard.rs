@@ -61,6 +61,13 @@ struct Stats {
 
 type EventBuffer = Arc<RwLock<VecDeque<FocusEvent>>>;
 
+#[derive(Clone)]
+struct AppState {
+    events: EventBuffer,
+    iocs: crate::modules::ioc_monitor::IocBuffer,
+    started_at: String,
+}
+
 /// Check if a process is a child of our own PID (WMI queries, etc.)
 fn is_own_child(proc: &crate::modules::process_tree::ProcessInfo, snapshot: &ProcessSnapshot) -> bool {
     let self_pid = std::process::id();
@@ -86,13 +93,19 @@ pub async fn run() -> anyhow::Result<()> {
     println!("Log:    {}", log_path.display().to_string().dimmed());
     println!("Events: {}", events_dir.display().to_string().dimmed());
 
-    // Shared event buffer for dashboard
+    // Shared state for dashboard
     let events: EventBuffer = Arc::new(RwLock::new(VecDeque::with_capacity(MAX_EVENTS)));
+    let iocs = crate::modules::ioc_monitor::new_buffer();
     let started_at = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
+    let state = AppState {
+        events: events.clone(),
+        iocs: iocs.clone(),
+        started_at: started_at.clone(),
+    };
+
     // Start HTTP dashboard server
-    let dashboard_events = events.clone();
-    let dashboard_started = started_at.clone();
+    let dashboard_state = state.clone();
     tokio::spawn(async move {
         let app = Router::new()
             .route("/", get(dashboard_html))
@@ -100,7 +113,8 @@ pub async fn run() -> anyhow::Result<()> {
             .route("/api/stats", get(api_stats))
             .route("/api/summary", get(api_summary))
             .route("/api/health", get(api_health))
-            .with_state((dashboard_events, dashboard_started));
+            .route("/api/iocs", get(api_iocs))
+            .with_state(dashboard_state);
 
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", DASHBOARD_PORT))
             .await
@@ -241,10 +255,48 @@ pub async fn run() -> anyhow::Result<()> {
         let current_pids: HashSet<u32> = snapshot.all_processes().map(|p| p.pid).collect();
         known_pids.retain(|pid| current_pids.contains(pid));
 
-        // Periodic cleanup of old event files (every 5 min)
+        // Periodic tasks (every 5 min): cleanup + IOC scan
         if last_cleanup.elapsed() > Duration::from_secs(300) {
             last_cleanup = std::time::Instant::now();
             cleanup_old_events(&events_dir, 7);
+
+            // IOC scan — query last 10 minutes of event logs
+            let ioc_events = crate::modules::ioc_monitor::poll_iocs(&iocs, 10);
+            if !ioc_events.is_empty() {
+                println!("\n  {} {} IOC(s) detected:", "!".red().bold(), ioc_events.len());
+                for ioc in &ioc_events {
+                    println!("    [{}] EventID:{} {} — {}", ioc.severity, ioc.event_id, ioc.description, ioc.details.chars().take(80).collect::<String>());
+
+                    // Emit brain event
+                    let brain_event = serde_json::json!({
+                        "schema_version": 1,
+                        "type": "ioc",
+                        "timestamp": ioc.timestamp,
+                        "event_id": ioc.event_id,
+                        "log_name": ioc.log_name,
+                        "severity": ioc.severity,
+                        "description": ioc.description,
+                        "details": ioc.details,
+                    });
+                    let event_file = events_dir.join(format!(
+                        "{}-ioc-{}.json",
+                        Local::now().format("%Y%m%d-%H%M%S-%3f"),
+                        ioc.event_id
+                    ));
+                    let _ = std::fs::write(&event_file, serde_json::to_string_pretty(&brain_event).unwrap_or_default());
+                }
+
+                // Push to IOC ring buffer
+                {
+                    let mut buf = iocs.write().await;
+                    for ioc in ioc_events {
+                        if buf.len() >= 500 {
+                            buf.pop_back();
+                        }
+                        buf.push_front(ioc);
+                    }
+                }
+            }
         }
     }
 
@@ -258,23 +310,23 @@ async fn dashboard_html() -> Html<&'static str> {
 }
 
 async fn api_events(
-    State((events, _)): State<(EventBuffer, String)>,
+    State(state): State<AppState>,
 ) -> axum::Json<Vec<FocusEvent>> {
-    let buf = events.read().await;
+    let buf = state.events.read().await;
     axum::Json(buf.iter().cloned().collect())
 }
 
 async fn api_stats(
-    State((events, started_at)): State<(EventBuffer, String)>,
+    State(state): State<AppState>,
 ) -> axum::Json<Stats> {
-    let buf = events.read().await;
+    let buf = state.events.read().await;
     let mut stats = Stats {
         total: buf.len(),
         safe: 0,
         claude: 0,
         unknown: 0,
         suspicious: 0,
-        started_at,
+        started_at: state.started_at.clone(),
     };
     for e in buf.iter() {
         match e.classification.as_str() {
@@ -403,9 +455,10 @@ fn normalize_command(cmd: &Option<String>, process_name: &str) -> String {
 
 /// T023: Aggregate repeat offenders and anomalies from ring buffer
 async fn api_summary(
-    State((events, started_at)): State<(EventBuffer, String)>,
+    State(state): State<AppState>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> axum::Json<Summary> {
+    let events = &state.events;
     let window_minutes: u64 = params
         .get("window")
         .and_then(|v| v.parse().ok())
@@ -505,14 +558,21 @@ async fn api_summary(
 }
 
 /// T024: Health/liveness endpoint for brain
+async fn api_iocs(
+    State(state): State<AppState>,
+) -> axum::Json<Vec<crate::modules::ioc_monitor::IocEvent>> {
+    let buf = state.iocs.read().await;
+    axum::Json(buf.iter().cloned().collect())
+}
+
 async fn api_health(
-    State((events, started_at)): State<(EventBuffer, String)>,
+    State(state): State<AppState>,
 ) -> axum::Json<Health> {
-    let buf = events.read().await;
+    let buf = state.events.read().await;
     let last_event = buf.front().map(|e| e.timestamp.clone());
 
     // Parse started_at to compute uptime
-    let uptime = chrono::NaiveDateTime::parse_from_str(&started_at, "%Y-%m-%d %H:%M:%S")
+    let uptime = chrono::NaiveDateTime::parse_from_str(&state.started_at, "%Y-%m-%d %H:%M:%S")
         .ok()
         .map(|start| {
             let now = chrono::Local::now().naive_local();

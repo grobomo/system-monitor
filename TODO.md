@@ -54,9 +54,12 @@
 ## Umbrella Modules (from vpn-monitor T011/T012)
 - [ ] T013: Add vpn-monitor as a module — health check, audit log status, reconnect metrics
 - [ ] T014: Add disk-monitor as a module — disk usage, git hygiene, cleanup suggestions
-- [ ] T015: Add ioc-monitor module — Windows Event Log scanning for IOCs (4625 failed login, 7045 new service, 4688 process creation)
-  - python-evtx or wevtutil for Event Log parsing
-  - Daily report + real-time alerting for critical IOCs
+- [x] T015: Add ioc-monitor module — Windows Event Log scanning for IOCs
+  - wevtutil via PowerShell for System log (Security requires elevation)
+  - Event IDs: 4625, 4688, 4697, 7045, 1102, 4720, 4732
+  - CLI: `system-monitor ioc [--last N] [--severity high]`
+  - API: GET /api/iocs (ring buffer of recent IOCs)
+  - Guard integration: scans every 5 min, emits brain events for medium+ IOCs
 - [ ] T016: Central daily digest email with all module reports
 
 ## Phase 6: Dashboard UX Fixes
