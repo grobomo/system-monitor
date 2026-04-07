@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Monitor — Focus Guard</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  padding: 16px;
+}
+h1 {
+  font-size: 18px;
+  color: #7fdbca;
+  margin-bottom: 12px;
+}
+.stats-bar {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  background: #16213e;
+  border-radius: 6px;
+  border: 1px solid #2a2a4a;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.stat-label { color: #888; }
+.stat-value { font-weight: bold; font-size: 16px; }
+.stat-total .stat-value { color: #fff; }
+.stat-safe .stat-value { color: #4ade80; }
+.stat-claude .stat-value { color: #67e8f9; }
+.stat-unknown .stat-value { color: #fbbf24; }
+.stat-suspicious .stat-value { color: #f87171; }
+
+.filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.filter-btn {
+  background: #16213e;
+  border: 1px solid #2a2a4a;
+  color: #aaa;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+.filter-btn:hover { border-color: #7fdbca; color: #fff; }
+.filter-btn.active { background: #2a2a4a; color: #7fdbca; border-color: #7fdbca; }
+
+.uptime { color: #666; font-size: 11px; margin-left: auto; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+thead th {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 2px solid #2a2a4a;
+  color: #888;
+  font-weight: normal;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: sticky;
+  top: 0;
+  background: #1a1a2e;
+  z-index: 1;
+}
+/* Column widths */
+th:nth-child(1) { width: 90px; }   /* Time */
+th:nth-child(2) { width: 120px; }  /* Process */
+th:nth-child(3) { width: 55px; }   /* PID */
+th:nth-child(4) { width: 100px; }  /* Classification */
+th:nth-child(5) { width: 140px; }  /* Source */
+th:nth-child(6) { }                /* What — takes remaining space */
+
+tbody td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #1e1e3a;
+  vertical-align: top;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* No hover layout shift — just highlight background */
+tbody tr.event-row { cursor: pointer; }
+tbody tr.event-row:hover { background: #1e2440; }
+
+/* Detail row — hidden by default, shown on click */
+tr.detail-row { display: none; }
+tr.detail-row.open { display: table-row; }
+tr.detail-row td {
+  padding: 8px 12px 12px 20px;
+  border-bottom: 2px solid #2a2a4a;
+  white-space: normal;
+  word-break: break-all;
+  background: #12192e;
+}
+.detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.detail-label {
+  color: #666;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.detail-value {
+  color: #c0c0c0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.detail-chain-step {
+  padding: 2px 0;
+  border-left: 2px solid #2a2a4a;
+  padding-left: 8px;
+  margin-left: 4px;
+}
+.detail-chain-step .step-name { color: #7fdbca; }
+.detail-chain-step .step-cmd { color: #888; font-size: 11px; }
+
+.cls-SAFE { color: #4ade80; }
+.cls-CLAUDE { color: #67e8f9; }
+.cls-UNKNOWN { color: #fbbf24; }
+.cls-SUSPICIOUS { color: #f87171; font-weight: bold; }
+
+.row-SAFE td:first-child { border-left: 3px solid #4ade80; }
+.row-CLAUDE td:first-child { border-left: 3px solid #67e8f9; }
+.row-UNKNOWN td:first-child { border-left: 3px solid #fbbf24; }
+.row-SUSPICIOUS td:first-child { border-left: 3px solid #f87171; }
+
+.what-col { color: #d4d4d4; }
+.what-summary { color: #e0e0e0; }
+.what-detail { color: #888; font-size: 11px; margin-left: 4px; }
+.project { color: #67e8f9; }
+.time { color: #999; white-space: nowrap; }
+.pid { color: #888; }
+.expand-icon { color: #555; font-size: 10px; margin-right: 4px; }
+tr.event-row.expanded .expand-icon { color: #7fdbca; }
+
+.empty {
+  text-align: center;
+  padding: 40px;
+  color: #555;
+  font-size: 14px;
+}
+.pulse {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+  margin-right: 8px;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+</style>
+</head>
+<body>
+
+<h1><span class="pulse"></span>System Monitor — Focus Guard</h1>
+
+<div class="stats-bar">
+  <div class="stat stat-total"><span class="stat-label">Total</span> <span class="stat-value" id="s-total">0</span></div>
+  <div class="stat stat-safe"><span class="stat-label">Safe</span> <span class="stat-value" id="s-safe">0</span></div>
+  <div class="stat stat-claude"><span class="stat-label">Claude</span> <span class="stat-value" id="s-claude">0</span></div>
+  <div class="stat stat-unknown"><span class="stat-label">Unknown</span> <span class="stat-value" id="s-unknown">0</span></div>
+  <div class="stat stat-suspicious"><span class="stat-label">Suspicious</span> <span class="stat-value" id="s-suspicious">0</span></div>
+  <div class="uptime" id="uptime"></div>
+</div>
+
+<div class="filters">
+  <button class="filter-btn active" data-filter="ALL">All</button>
+  <button class="filter-btn" data-filter="UNKNOWN">Unknown</button>
+  <button class="filter-btn" data-filter="SUSPICIOUS">Suspicious</button>
+  <button class="filter-btn" data-filter="SAFE">Safe</button>
+  <button class="filter-btn" data-filter="CLAUDE">Claude</button>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Process</th>
+      <th>PID</th>
+      <th>Classification</th>
+      <th>Source</th>
+      <th>What</th>
+    </tr>
+  </thead>
+  <tbody id="events-body">
+    <tr><td colspan="6" class="empty">Waiting for events...</td></tr>
+  </tbody>
+</table>
+
+<script>
+let currentFilter = 'ALL';
+let expandedPids = new Set();
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    refresh();
+  });
+});
+
+function classKey(cls) {
+  if (cls === 'SAFE') return 'SAFE';
+  if (cls === 'UNKNOWN') return 'UNKNOWN';
+  if (cls.startsWith('CLAUDE')) return 'CLAUDE';
+  if (cls.startsWith('SUSPICIOUS')) return 'SUSPICIOUS';
+  return 'UNKNOWN';
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+/** Extract a human-readable summary from a full command line */
+function summarizeCommand(cmdLine, processName) {
+  if (!cmdLine) return processName || '-';
+
+  // For python: extract the script name and key args
+  if (processName && processName.toLowerCase().startsWith('python')) {
+    // Azure CLI via python: python.exe -IBm azure.cli <command>
+    const az = cmdLine.match(/-[I]*[B]*m\s+azure\.cli\s+(.*)/i);
+    if (az) return 'az ' + az[1].substring(0, 100);
+
+    // Match: python[3].exe [flags] script.py [args]
+    const m = cmdLine.match(/python[3w]?(?:\.exe)?\s+(?:["-][\w\-=]*\s+)*["]?([^\s"]+\.py)["]?\s*(.*)/i);
+    if (m) {
+      const script = m[1].replace(/.*[\\\/]/, ''); // basename
+      const args = m[2] ? m[2].substring(0, 80) : '';
+      return script + (args ? ' ' + args : '');
+    }
+  }
+
+  // For powershell: extract -Command or -File content
+  if (processName && /powershell|pwsh/i.test(processName)) {
+    const cm = cmdLine.match(/-Command\s+["]?(.*)/i);
+    if (cm) {
+      const cmd = cm[1].substring(0, 100).replace(/["']$/, '');
+      return 'PS: ' + cmd;
+    }
+    const fm = cmdLine.match(/-File\s+["]?([^\s"]+)/i);
+    if (fm) return fm[1].replace(/.*[\\\/]/, '');
+  }
+
+  // For cmd.exe: extract /c content, then summarize the inner command
+  if (processName && /^cmd\.exe$/i.test(processName)) {
+    const cm = cmdLine.match(/\/[ck]\s+["]?(.*)/i);
+    if (cm) {
+      let inner = cm[1];
+      // If inner is "node path/to/script.js ...", extract script basename
+      const nodeM = inner.match(/node\s+["]?([^\s"]+)["]?\s*(.*)/i);
+      if (nodeM) {
+        const script = nodeM[1].replace(/.*[\\\/]/, '');
+        const args = nodeM[2] ? nodeM[2].substring(0, 60) : '';
+        return 'node ' + script + (args ? ' ' + args : '');
+      }
+      return inner.substring(0, 100);
+    }
+  }
+
+  // Generic: show basename of first path-like argument, or truncated cmdline
+  const truncated = cmdLine.length > 100 ? cmdLine.substring(0, 100) + '...' : cmdLine;
+  return truncated;
+}
+
+/** Build the detail panel HTML for a clicked row */
+function buildDetail(e) {
+  let html = '<div class="detail-content">';
+
+  // Full command line
+  html += '<div><span class="detail-label">Full Command</span>';
+  html += '<div class="detail-value">' + esc(e.command_line || '(not captured)') + '</div></div>';
+
+  // Exe path
+  if (e.exe_path) {
+    html += '<div><span class="detail-label">Exe Path</span>';
+    html += '<div class="detail-value">' + esc(e.exe_path) + '</div></div>';
+  }
+
+  // Parent chain — each step on its own line
+  if (e.parent_chain) {
+    html += '<div><span class="detail-label">Parent Chain</span>';
+    const steps = e.parent_chain.split(' -> ');
+    steps.forEach((step, i) => {
+      const indent = i === 0 ? '' : 'margin-left:' + (i * 12) + 'px;';
+      html += '<div class="detail-chain-step" style="' + indent + '">';
+      html += '<span class="step-name">' + esc(step) + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function toggleDetail(pid) {
+  if (expandedPids.has(pid)) {
+    expandedPids.delete(pid);
+  } else {
+    expandedPids.add(pid);
+  }
+  // Update DOM directly without full refresh
+  const row = document.querySelector(`tr.event-row[data-pid="${pid}"]`);
+  const detail = document.querySelector(`tr.detail-row[data-pid="${pid}"]`);
+  if (row && detail) {
+    if (expandedPids.has(pid)) {
+      row.classList.add('expanded');
+      detail.classList.add('open');
+    } else {
+      row.classList.remove('expanded');
+      detail.classList.remove('open');
+    }
+  }
+}
+
+async function refresh() {
+  try {
+    const [eventsRes, statsRes] = await Promise.all([
+      fetch('/api/events'),
+      fetch('/api/stats')
+    ]);
+    const events = await eventsRes.json();
+    const stats = await statsRes.json();
+
+    document.getElementById('s-total').textContent = stats.total;
+    document.getElementById('s-safe').textContent = stats.safe;
+    document.getElementById('s-claude').textContent = stats.claude;
+    document.getElementById('s-unknown').textContent = stats.unknown;
+    document.getElementById('s-suspicious').textContent = stats.suspicious;
+    document.getElementById('uptime').textContent = 'Started: ' + stats.started_at;
+
+    const tbody = document.getElementById('events-body');
+    const filtered = events.filter(e => currentFilter === 'ALL' || classKey(e.classification) === currentFilter);
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">' +
+        (events.length === 0 ? 'Waiting for events...' : 'No events match filter') +
+        '</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = filtered.map(e => {
+      const ck = classKey(e.classification);
+      const time = e.timestamp.length > 11 ? e.timestamp.substring(11) : e.timestamp;
+      const summary = summarizeCommand(e.command_line, e.name);
+      const isExpanded = expandedPids.has(e.pid);
+      const expandCls = isExpanded ? ' expanded' : '';
+      const detailCls = isExpanded ? ' open' : '';
+      const icon = isExpanded ? '&#9660;' : '&#9654;';
+
+      return `<tr class="event-row row-${ck}${expandCls}" data-pid="${e.pid}" onclick="toggleDetail(${e.pid})">
+        <td class="time">${esc(time)}</td>
+        <td><span class="expand-icon">${icon}</span>${esc(e.name)}</td>
+        <td class="pid">${e.pid}</td>
+        <td class="cls-${ck}">${esc(e.classification)}</td>
+        <td class="project">${esc(e.source_project || '-')}</td>
+        <td class="what-col"><span class="what-summary">${esc(summary)}</span></td>
+      </tr>
+      <tr class="detail-row${detailCls}" data-pid="${e.pid}">
+        <td colspan="6">${buildDetail(e)}</td>
+      </tr>`;
+    }).join('');
+  } catch (err) {
+    // server might be restarting
+  }
+}
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+# Rust
+target/
+Cargo.lock
+
+# Old TS artifacts
+archive_*
+node_modules/
+dist/
+
+# Runtime
+.env
+*.log
+.workflow-state.json
+SESSION_STATE.md

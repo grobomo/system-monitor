@@ -1,0 +1,58 @@
+[package]
+name = "system-monitor"
+version = "0.1.0"
+edition = "2021"
+description = "Real-time system security agent for Windows — process monitoring, UAC tracking, threat classification"
+
+[[bin]]
+name = "system-monitor"
+path = "src/main.rs"
+
+[dependencies]
+# Windows API bindings
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Threading",
+    "Win32_Security",
+    "Win32_System_ProcessStatus",
+    "Win32_Storage_FileSystem",
+    "Win32_System_SystemInformation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_Networking_WinSock",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Colored terminal output
+colored = "2"
+
+# Home directory
+dirs = "5"
+
+# Error handling
+anyhow = "1"
+
+# HTTP server for dashboard
+axum = "0.7"
+
+# Open browser
+open = "5"
+
+# System tray
+tray-icon = "0.22"
+
+# Lightweight regex (no proc-macro, fast compile)
+regex-lite = "0.1"

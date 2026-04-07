@@ -1,0 +1,3 @@
+# Point to VS Build Tools linker to avoid Git Bash's /usr/bin/link.exe
+[target.x86_64-pc-windows-msvc]
+linker = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx86\\x64\\link.exe"
