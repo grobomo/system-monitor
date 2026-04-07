@@ -82,17 +82,17 @@
 - [ ] Add AnalysisEngine trait with BrainEngine impl (shared with github-agent)
 - [ ] Baseline deviation detection (compare current vs saved baseline)
 - [ ] T-HOOK: Integrate hook-monitor as a health check module
-- [ ] Publish to GitHub (grobomo)
+- [x] Publish to GitHub (grobomo) — https://github.com/grobomo/system-monitor
 - [ ] System driver for enforcement (future phase — hide/block windows, not just observe)
 
-## Session State (2026-04-07)
-- Guard running as background process, dashboard live at localhost:9847
-- Already catching events (6 detected in first run: 3 safe, 3 claude)
-- hook-runner T337-T340 specced: hook tamper protection (specs/hook-tamper-protection/)
-- unified-brain T060-T062 written: system-monitor channel adapter + focus-steal action router
-- SHTD enforcement gap found: spec-gate.js was silently weakened (Bash not gated), TODO.md fallback too broad
-- CRITICAL: dispatch hook-runner session to fix T338 (restore spec-gate Bash blocking) FIRST
-- Next for system-monitor: code review/DRY, publish to GitHub, then umbrella modules (T013-T016)
+## Session State (2026-04-07 session 2)
+- Published to GitHub: https://github.com/grobomo/system-monitor
+- T021-T022: Dashboard UX fixes — click-to-expand detail rows, no hover layout shift, smart command summaries
+- T023-T025: Brain integration API — /api/summary (repeat offenders + anomalies), /api/health, command normalizer
+- Removed hardcoded PROJECTS_DIR, now uses dirs::home_dir() at runtime
+- Identified focus-steal root cause: github-agent service.bat process guard spawns visible cmd.exe (TODO written in github-agent)
+- Guard running, dashboard live at localhost:9847
+- Next: umbrella modules T013-T016, then T018 brain consumer (unified-brain side)
 
 ## Build Notes
 - MSVC Build Tools 2022 + Windows 11 SDK 26100 installed
