@@ -119,9 +119,9 @@
   - API: GET /api/status for programmatic access
 
 ## Phase 11: Bundle Architecture
-- [ ] T033: Document bundle architecture — system-monitor as orchestrator of standalone tools
-- [ ] T034: Extract vpn-monitor crate — standalone CLI + library for VPN detection/status
-- [ ] T035: Extract disk-monitor crate — standalone CLI + library for disk usage/cleanup
+- [x] T033: Document bundle architecture — ARCHITECTURE.md (PR #7)
+- [x] T034: Extract vpn-monitor crate — grobomo/sm-vpn-monitor (PR #7)
+- [x] T035: Extract disk-monitor crate — grobomo/sm-disk-monitor (PR #7)
 - [ ] T036: Extract process-monitor crate — standalone CLI + library for process tree/classification
 - [ ] T037: Extract ioc-monitor crate — standalone CLI + library for Windows Event Log IOC scanning
 - [ ] T038: Extract claude-sessions crate — standalone CLI + library for Claude tab collision detection
@@ -140,9 +140,9 @@
 - T027: Claude tab collision detection (PR #4)
 - T014: Disk monitor (PR #5)
 - T032: Status command (PR #6)
-- Remaining unchecked: T016 (daily digest), T018 (brain consumer)
-- Future: ETW events, UAC tracking, baseline deviation, hook-monitor integration
-- Also: github-agent scheduled task is DISABLED (service.bat needs fixing)
+- T033-T035: Bundle architecture + extracted sm-vpn-monitor, sm-disk-monitor (PR #7)
+- Next: T036 (process-monitor), T037 (ioc-monitor), T038 (claude-sessions) extractions
+- Remaining non-extraction: T016 (daily digest), T018 (brain consumer), T039 (Python vpn-monitor integration)
 
 ## Build Notes
 - MSVC Build Tools 2022 + Windows 11 SDK 26100 installed
