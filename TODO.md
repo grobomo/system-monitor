@@ -112,7 +112,7 @@
   - Residual CMD spawns (~4/min) all from Claude Code sessions — expected behavior, not focus-stealing
 
 ## Phase 10: Status Command
-- [ ] T032: Implement `status` command with real system metrics (CPU, memory, disk, network)
+- [x] T032: Implement `status` command with real system metrics (CPU, memory, disk, VPN, Claude sessions) (PR #6)
   - CPU load via Win32_Processor, memory via Win32_OperatingSystem
   - Drive space from disk_monitor, VPN from vpn_monitor, Claude sessions from claude_sessions
   - One-screen summary with color-coded bars
@@ -128,9 +128,11 @@
 - [ ] System driver for enforcement (future phase — hide/block windows, not just observe)
 
 ## Session State (2026-04-08 session 2)
-- T027: Claude tab collision detection COMPLETE (PR #4)
-- T014: Disk monitor COMPLETE (PR #5)
+- T027: Claude tab collision detection (PR #4)
+- T014: Disk monitor (PR #5)
+- T032: Status command (PR #6)
 - Remaining unchecked: T016 (daily digest), T018 (brain consumer)
+- Future: ETW events, UAC tracking, baseline deviation, hook-monitor integration
 - Also: github-agent scheduled task is DISABLED (service.bat needs fixing)
 
 ## Build Notes
