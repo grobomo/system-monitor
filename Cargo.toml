@@ -58,3 +58,7 @@ tray-icon = "0.22"
 
 # Lightweight regex (no proc-macro, fast compile)
 regex-lite = "0.1"
+
+# Standalone modules (extracted crates)
+sm-vpn-monitor = { git = "https://github.com/grobomo/sm-vpn-monitor" }
+sm-disk-monitor = { git = "https://github.com/grobomo/sm-disk-monitor" }

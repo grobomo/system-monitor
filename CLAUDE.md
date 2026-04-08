@@ -1,44 +1,59 @@
 # System Monitor
 
-Rust-based real-time security agent for Windows. Monitors processes, UAC events, and system health — classifying activity as safe/claude/unknown/suspicious/malicious like an AV/EDR agent.
+Bundle of independent system management tools for Windows. Each module can be installed standalone or run together via the orchestrator. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full vision.
 
 ## Purpose
 
-The user runs multiple Claude Code sessions simultaneously. Each spawns shell commands, PowerShell scripts, and child processes. Mystery windows appear with no attribution. UAC prompts fire with unknown origin. This agent provides real-time visibility and threat classification.
+The user runs multiple Claude Code sessions simultaneously. Each spawns shell commands, PowerShell scripts, and child processes. Mystery windows appear with no attribution. UAC prompts fire with unknown origin. This agent provides real-time visibility, threat classification, and system health monitoring.
 
-## Architecture
+## Modules
 
-- **Rust binary** — single executable, no runtime dependencies
-- **Process monitor** — enumerates all processes via Win32 ToolHelp API
-- **Process tree** — maps PIDs to parent chains, identifies Claude session trees
-- **Classifier** — categorizes each process: safe / claude / unknown / suspicious / malicious
-- **Daemon mode** — continuous polling (future: ETW real-time events)
-- **CLI** — `system-monitor procs`, `uac`, `status`, `daemon`
+| Command | Module | Description |
+|---------|--------|-------------|
+| `system-monitor status` | status | One-screen health: CPU, memory, disk, VPN, Claude sessions |
+| `system-monitor procs` | process-monitor | Process tree with classifications |
+| `system-monitor vpn` | vpn-monitor | VPN detection + tunnel verification |
+| `system-monitor disk` | disk-monitor | Drive space, project sizes, cleanup suggestions |
+| `system-monitor ioc` | ioc-monitor | Windows Event Log IOC scanning |
+| `system-monitor claude-tabs` | claude-sessions | Claude Code tab collision detection |
+| `system-monitor diagnose` | cmd-diagnosis | Find focus-stealing CMD popups |
+| `system-monitor guard` | focus-guard | Dashboard + tray + all modules polling |
 
 ## Usage
 
 ```bash
-# Show all processes with classifications
-system-monitor procs
+# Quick health check
+system-monitor status
 
-# Show only unknown/suspicious/malicious
-system-monitor procs --threats-only
+# Full dashboard with all modules
+system-monitor guard
 
-# Run as continuous daemon
-system-monitor daemon
-
-# Show UAC events (TODO)
-system-monitor uac
+# Individual modules
+system-monitor vpn
+system-monitor disk
+system-monitor claude-tabs
+system-monitor ioc --last 60 --severity high
+system-monitor diagnose
 ```
 
 ## Build
 
 ```bash
 cargo build --release
+# Binary: target/release/system-monitor.exe
 ```
 
-## Integration Points
+## Bundle Architecture
 
-- `vpn-monitor` — VPN connectivity status
-- `disk-monitor` — Disk usage and cleanup recommendations
-- `ioc-monitor` (planned) — Windows events, file events, network connections
+Each module is being extracted to its own `sm-*` crate (see ARCHITECTURE.md):
+- Standalone install: `cargo install sm-vpn-monitor`
+- Bundle install: `cargo install system-monitor` (includes all modules)
+- Library use: `sm_vpn_monitor::check_vpn_status()` in your own code
+
+## Dashboard
+
+`system-monitor guard` starts:
+- HTTP dashboard at `http://localhost:9847`
+- System tray icon with right-click menu
+- Polling loop: focus events (500ms), VPN (60s), Claude tabs (30s), IOCs + disk (5min)
+- Brain events emitted to `~/.system-monitor/events/` for external consumers
