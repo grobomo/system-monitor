@@ -43,6 +43,8 @@ enum Commands {
     },
     /// List active Claude Code sessions — detect project directory collisions
     ClaudeTabs,
+    /// Show disk usage, project sizes, and cleanup suggestions
+    Disk,
     /// Diagnose focus-stealing CMD/PowerShell popup windows
     Diagnose,
     /// Fix focus-stealing popups by disabling/enabling scheduled tasks
@@ -90,6 +92,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::ClaudeTabs) => {
             modules::claude_sessions::show_sessions();
+        }
+        Some(Commands::Disk) => {
+            modules::disk_monitor::show_disk_status();
         }
         Some(Commands::Diagnose) => {
             modules::cmd_diagnosis::show_diagnosis();
