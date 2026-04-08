@@ -116,6 +116,7 @@ pub async fn run() -> anyhow::Result<()> {
             .route("/api/iocs", get(api_iocs))
             .route("/api/vpn", get(api_vpn))
             .route("/api/claude-sessions", get(api_claude_sessions))
+            .route("/api/disk", get(api_disk))
             .with_state(dashboard_state);
 
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", DASHBOARD_PORT))
@@ -323,6 +324,33 @@ pub async fn run() -> anyhow::Result<()> {
         if last_cleanup.elapsed() > Duration::from_secs(300) {
             last_cleanup = std::time::Instant::now();
             cleanup_old_events(&events_dir, 7);
+
+            // Disk space check
+            let low_drives = crate::modules::disk_monitor::check_disk_for_guard();
+            for drive in &low_drives {
+                println!(
+                    "  {} Drive {} low: {:.1}% used ({:.1} GB free)",
+                    "!!".red().bold(),
+                    drive.letter.yellow(),
+                    drive.used_percent,
+                    drive.free_gb
+                );
+                let brain_event = serde_json::json!({
+                    "schema_version": 1,
+                    "type": "disk_low",
+                    "timestamp": Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string(),
+                    "drive": drive.letter,
+                    "used_percent": drive.used_percent,
+                    "free_gb": drive.free_gb,
+                    "total_gb": drive.total_gb,
+                });
+                let event_file = events_dir.join(format!(
+                    "{}-disk-low-{}.json",
+                    Local::now().format("%Y%m%d-%H%M%S-%3f"),
+                    drive.letter.replace(':', ""),
+                ));
+                let _ = std::fs::write(&event_file, serde_json::to_string_pretty(&brain_event).unwrap_or_default());
+            }
 
             // IOC scan — query last 10 minutes of event logs
             let ioc_events = crate::modules::ioc_monitor::poll_iocs(&iocs, 10);
@@ -635,6 +663,10 @@ async fn api_vpn() -> axum::Json<Vec<crate::modules::vpn_monitor::VpnStatus>> {
 
 async fn api_claude_sessions() -> axum::Json<crate::modules::claude_sessions::SessionReport> {
     axum::Json(crate::modules::claude_sessions::detect_sessions())
+}
+
+async fn api_disk() -> axum::Json<crate::modules::disk_monitor::DiskReport> {
+    axum::Json(crate::modules::disk_monitor::scan())
 }
 
 async fn api_health(
