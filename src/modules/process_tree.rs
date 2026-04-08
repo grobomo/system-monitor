@@ -6,7 +6,7 @@ use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::System::Diagnostics::ToolHelp::*;
 use windows::Win32::System::Threading::*;
 
-const CREATE_NO_WINDOW: u32 = 0x08000000;
+use super::CREATE_NO_WINDOW;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessInfo {

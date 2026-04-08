@@ -6,7 +6,7 @@ use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-const CREATE_NO_WINDOW: u32 = 0x08000000;
+use super::CREATE_NO_WINDOW;
 const MAX_IOCS: usize = 500;
 
 // === T015a: Data Structures ===
