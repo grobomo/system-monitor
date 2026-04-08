@@ -43,6 +43,12 @@ enum Commands {
     },
     /// List active Claude Code sessions — detect project directory collisions
     ClaudeTabs,
+    /// Actively prevent CMD/PS windows from stealing focus (hides them)
+    Shield {
+        /// Restore default foreground lock timeout and exit
+        #[arg(long)]
+        restore: bool,
+    },
     /// Show disk usage, project sizes, and cleanup suggestions
     Disk,
     /// Diagnose focus-stealing CMD/PowerShell popup windows
@@ -92,6 +98,13 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::ClaudeTabs) => {
             modules::claude_sessions::show_sessions();
+        }
+        Some(Commands::Shield { restore }) => {
+            if restore {
+                modules::focus_enforcer::restore_defaults();
+            } else {
+                modules::focus_enforcer::run_enforcer()?;
+            }
         }
         Some(Commands::Disk) => {
             modules::disk_monitor::show_disk_status();

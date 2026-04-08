@@ -140,6 +140,8 @@ pub async fn run() -> anyhow::Result<()> {
     let _ = open::that(format!("http://localhost:{}", DASHBOARD_PORT));
 
     let mut known_pids: HashSet<u32> = HashSet::new();
+    let mut known_hidden: HashSet<isize> = HashSet::new();
+    let mut total_hidden: usize = 0;
     let mut event_count: usize = 0;
     let mut last_cleanup = std::time::Instant::now();
     let mut last_vpn_check = std::time::Instant::now();
@@ -164,6 +166,18 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Active enforcement: hide transient CMD/PS windows
+        let hidden = crate::modules::focus_enforcer::enforce_once(&mut known_hidden);
+        if hidden > 0 {
+            total_hidden += hidden;
+            println!(
+                "  {} hid {} window(s) ({} total)",
+                "SHIELD".green().bold(),
+                hidden,
+                total_hidden
+            );
+        }
 
         let snapshot = ProcessSnapshot::capture()?;
 
