@@ -3,6 +3,7 @@ pub mod claude_sessions;
 pub mod cmd_diagnosis;
 pub mod daemon;
 pub mod disk_monitor;
+pub mod focus_enforcer;
 pub mod focus_guard;
 pub mod ioc_monitor;
 pub mod process_monitor;
