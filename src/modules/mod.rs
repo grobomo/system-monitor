@@ -1,4 +1,5 @@
 pub mod classifier;
+pub mod claude_sessions;
 pub mod cmd_diagnosis;
 pub mod daemon;
 pub mod focus_guard;
