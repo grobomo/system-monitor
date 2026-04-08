@@ -115,6 +115,7 @@ pub async fn run() -> anyhow::Result<()> {
             .route("/api/health", get(api_health))
             .route("/api/iocs", get(api_iocs))
             .route("/api/vpn", get(api_vpn))
+            .route("/api/claude-sessions", get(api_claude_sessions))
             .with_state(dashboard_state);
 
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", DASHBOARD_PORT))
@@ -141,6 +142,7 @@ pub async fn run() -> anyhow::Result<()> {
     let mut last_cleanup = std::time::Instant::now();
     let mut last_vpn_check = std::time::Instant::now();
     let mut last_vpn_statuses: Vec<crate::modules::vpn_monitor::VpnStatus> = Vec::new();
+    let mut last_collision_check = std::time::Instant::now();
 
     // Initial snapshot — baseline
     let snapshot = ProcessSnapshot::capture()?;
@@ -286,6 +288,35 @@ pub async fn run() -> anyhow::Result<()> {
                 let _ = std::fs::write(&event_file, serde_json::to_string_pretty(&brain_event).unwrap_or_default());
             }
             last_vpn_statuses = new_statuses;
+        }
+
+        // Claude tab collision check (every 30s)
+        if last_collision_check.elapsed() > Duration::from_secs(30) {
+            last_collision_check = std::time::Instant::now();
+            let collisions = crate::modules::claude_sessions::check_collisions_for_guard();
+            for group in &collisions {
+                println!(
+                    "  {} Claude tab collision: {} ({} sessions)",
+                    "!!".red().bold(),
+                    group.project_dir.yellow(),
+                    group.sessions.len()
+                );
+
+                // Emit brain event
+                let brain_event = serde_json::json!({
+                    "schema_version": 1,
+                    "type": "claude_tab_collision",
+                    "timestamp": Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string(),
+                    "project_dir": group.project_dir,
+                    "session_count": group.sessions.len(),
+                    "pids": group.sessions.iter().map(|s| s.pid).collect::<Vec<_>>(),
+                });
+                let event_file = events_dir.join(format!(
+                    "{}-collision.json",
+                    Local::now().format("%Y%m%d-%H%M%S-%3f"),
+                ));
+                let _ = std::fs::write(&event_file, serde_json::to_string_pretty(&brain_event).unwrap_or_default());
+            }
         }
 
         // Periodic tasks (every 5 min): cleanup + IOC scan
@@ -600,6 +631,10 @@ async fn api_iocs(
 
 async fn api_vpn() -> axum::Json<Vec<crate::modules::vpn_monitor::VpnStatus>> {
     axum::Json(crate::modules::vpn_monitor::check_vpn_status())
+}
+
+async fn api_claude_sessions() -> axum::Json<crate::modules::claude_sessions::SessionReport> {
+    axum::Json(crate::modules::claude_sessions::detect_sessions())
 }
 
 async fn api_health(

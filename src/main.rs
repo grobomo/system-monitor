@@ -41,6 +41,8 @@ enum Commands {
         #[arg(short, long)]
         severity: Option<String>,
     },
+    /// List active Claude Code sessions — detect project directory collisions
+    ClaudeTabs,
     /// Diagnose focus-stealing CMD/PowerShell popup windows
     Diagnose,
     /// Fix focus-stealing popups by disabling/enabling scheduled tasks
@@ -85,6 +87,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::Ioc { last, severity }) => {
             modules::ioc_monitor::show_iocs(last, severity.as_deref()).await?;
+        }
+        Some(Commands::ClaudeTabs) => {
+            modules::claude_sessions::show_sessions();
         }
         Some(Commands::Diagnose) => {
             modules::cmd_diagnosis::show_diagnosis();
