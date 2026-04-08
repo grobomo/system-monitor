@@ -52,7 +52,13 @@
   - Exit menu item triggers graceful shutdown
 
 ## Umbrella Modules (from vpn-monitor T011/T012)
-- [ ] T013: Add vpn-monitor as a module — health check, audit log status, reconnect metrics
+- [x] T013: Add vpn-monitor as a module — health check, tunnel verification, guard integration
+  - Process detection for F5, Tailscale, Cisco, GlobalProtect, Zscaler, OpenVPN, WireGuard, Pulse
+  - Adapter status via Get-NetAdapter
+  - Tunnel verification: ping test (Tailscale→100.100.100.100), gateway check (others)
+  - CLI: `system-monitor vpn` with verified/unverified/disconnected indicators
+  - API: GET /api/vpn
+  - Guard integration: polls every 60s, emits brain events on connect/disconnect/tunnel_down
 - [ ] T014: Add disk-monitor as a module — disk usage, git hygiene, cleanup suggestions
 - [x] T015: Add ioc-monitor module — Windows Event Log scanning for IOCs
   - wevtutil via PowerShell for System log (Security requires elevation)
@@ -79,7 +85,32 @@
 - [x] T025: Command normalizer — strips PIDs, temp paths, quotes; extracts az cli, python scripts, node scripts, powershell commands
 
 ## Phase 8: Code Quality
-- [ ] T026: Fix all compiler warnings — unused imports, unused variables, dead code fields
+- [x] T026: Fix all compiler warnings — unused imports, unused variables, dead code fields
+
+## Claude Tab Collision Detection
+- [ ] T027: Detect multiple Claude Code sessions on the same project directory
+  - system-monitor already has process tree + Claude session attribution (T003)
+  - Add a `claude-tabs` subcommand: scan running node.exe processes, group by CLAUDE_PROJECT_DIR
+  - Flag projects with 2+ active sessions (collision risk: branch conflicts, index.lock, race conditions)
+  - Guard integration: emit brain event when collision detected
+  - Dashboard: show active Claude sessions panel with project directories
+  - API: GET /api/claude-sessions — list active sessions with PIDs + project dirs
+  - Context-reset spawns new tabs that work on the same repo simultaneously. This causes git branch switching, index.lock contention, and parallel commits that stomp each other. Detection must be fast enough to warn the new session at SessionStart.
+
+## Phase 9: CMD Popup Diagnosis
+- [x] T028: `diagnose` command — scans scheduled tasks for CMD/PS spawners, identifies visible + repeating tasks
+  - PowerShell query of Get-ScheduledTask with action/trigger analysis
+  - Scores tasks by visibility, repeat interval, recency
+  - Fast ToolHelp32-based spawn rate monitor (500ms polling, PID tracking)
+  - Parent chain tracing for each new CMD/PS process
+- [x] T029: `fix` command — disable/enable scheduled tasks by name
+  - `system-monitor fix --disable <task1> <task2>` / `--enable <task>`
+- [x] T030: `verify` command — monitor spawn rate for configurable duration to confirm fix
+- [x] T031: Diagnosed and fixed focus-stealing CMD popups
+  - Root cause: `github-agent-service` scheduled task (PT1M repeat) → wscript.exe → service.bat → cmd.exe
+  - Also: 8 orphaned wscript.exe instances accumulated (guard check failed due to hidden window)
+  - Fix: disabled task, killed orphaned processes
+  - Residual CMD spawns (~4/min) all from Claude Code sessions — expected behavior, not focus-stealing
 
 ## Future Work
 - [ ] Implement `status` command with real system metrics (CPU, memory, disk, network)
@@ -91,14 +122,19 @@
 - [x] Publish to GitHub (grobomo) — https://github.com/grobomo/system-monitor
 - [ ] System driver for enforcement (future phase — hide/block windows, not just observe)
 
-## Session State (2026-04-07 session 3)
+## Session State (2026-04-08 session 1)
+- Branch: 003-T013-vpn-monitor-module
 - Published to GitHub: https://github.com/grobomo/system-monitor
-- T021-T025: Dashboard UX + brain API — all complete
-- T015: IOC monitor merged (PR #1) — wevtutil/PowerShell, System log scanning, CLI + API + guard integration
-- Guard running in background, dashboard at localhost:9847
-- Remaining unchecked: T013 (vpn-monitor), T014 (disk-monitor), T016 (daily digest), T018 (brain consumer)
-- Future work: status command, ETW replacement, UAC tracking, baseline deviation
-- All code on main, no open branches
+- T013: VPN monitor COMPLETE — tunnel verification, guard integration (60s poll), brain events
+- T028-T031: CMD popup diagnosis COMPLETE — diagnose/fix/verify commands
+  - Root cause was github-agent-service scheduled task (PT1M) + 8 orphaned wscript.exe
+  - Disabled task, killed orphans, verified CMD spawn rate dropped from 11/min to 4/min (Claude baseline)
+- DRY: centralized CREATE_NO_WINDOW constant in mod.rs, removed 4 duplicates
+- Zero compiler warnings
+- Binary: target/release/system-monitor.exe (clean build)
+- Remaining unchecked: T014 (disk-monitor), T016 (daily digest), T018 (brain consumer), T027 (claude tab collision)
+- Next: commit changes, create PR, then T014 or T027
+- Also note: github-agent TODO should be updated — service.bat needs fixing (invisible guard check, or convert to PowerShell with -WindowStyle Hidden). Currently the scheduled task is DISABLED.
 
 ## Build Notes
 - MSVC Build Tools 2022 + Windows 11 SDK 26100 installed

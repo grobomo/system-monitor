@@ -30,6 +30,8 @@ enum Commands {
     Daemon,
     /// Watch for cmd/python windows stealing focus — log and emit events to brain
     Guard,
+    /// Show VPN connectivity status
+    Vpn,
     /// Scan Windows Event Logs for indicators of compromise
     Ioc {
         /// Minutes to look back (default: 1440 = 24h)
@@ -38,6 +40,23 @@ enum Commands {
         /// Minimum severity: info, low, medium, high, critical
         #[arg(short, long)]
         severity: Option<String>,
+    },
+    /// Diagnose focus-stealing CMD/PowerShell popup windows
+    Diagnose,
+    /// Fix focus-stealing popups by disabling/enabling scheduled tasks
+    Fix {
+        /// Task names to disable (can specify multiple)
+        #[arg(long, num_args = 1..)]
+        disable: Vec<String>,
+        /// Task names to re-enable (can specify multiple)
+        #[arg(long, num_args = 1..)]
+        enable: Vec<String>,
+    },
+    /// Monitor CMD/PS spawn rate to verify a fix worked
+    Verify {
+        /// Duration to monitor in seconds (default: 120)
+        #[arg(short, long, default_value = "120")]
+        duration: u64,
     },
 }
 
@@ -61,8 +80,20 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Guard) => {
             modules::focus_guard::run().await?;
         }
+        Some(Commands::Vpn) => {
+            modules::vpn_monitor::show_vpn_status();
+        }
         Some(Commands::Ioc { last, severity }) => {
             modules::ioc_monitor::show_iocs(last, severity.as_deref()).await?;
+        }
+        Some(Commands::Diagnose) => {
+            modules::cmd_diagnosis::show_diagnosis();
+        }
+        Some(Commands::Fix { disable, enable }) => {
+            modules::cmd_diagnosis::fix_tasks(&disable, &enable);
+        }
+        Some(Commands::Verify { duration }) => {
+            modules::cmd_diagnosis::verify_fix(duration);
         }
         None => {
             // Default: show quick status

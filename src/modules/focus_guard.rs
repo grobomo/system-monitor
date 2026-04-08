@@ -114,6 +114,7 @@ pub async fn run() -> anyhow::Result<()> {
             .route("/api/summary", get(api_summary))
             .route("/api/health", get(api_health))
             .route("/api/iocs", get(api_iocs))
+            .route("/api/vpn", get(api_vpn))
             .with_state(dashboard_state);
 
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", DASHBOARD_PORT))
@@ -138,6 +139,8 @@ pub async fn run() -> anyhow::Result<()> {
     let mut known_pids: HashSet<u32> = HashSet::new();
     let mut event_count: usize = 0;
     let mut last_cleanup = std::time::Instant::now();
+    let mut last_vpn_check = std::time::Instant::now();
+    let mut last_vpn_statuses: Vec<crate::modules::vpn_monitor::VpnStatus> = Vec::new();
 
     // Initial snapshot — baseline
     let snapshot = ProcessSnapshot::capture()?;
@@ -254,6 +257,36 @@ pub async fn run() -> anyhow::Result<()> {
         // Clean up dead PIDs
         let current_pids: HashSet<u32> = snapshot.all_processes().map(|p| p.pid).collect();
         known_pids.retain(|pid| current_pids.contains(pid));
+
+        // VPN check (every 60s)
+        if last_vpn_check.elapsed() > Duration::from_secs(60) {
+            last_vpn_check = std::time::Instant::now();
+            let (new_statuses, changes) = crate::modules::vpn_monitor::poll_vpn_changes(&last_vpn_statuses);
+            for change in &changes {
+                let icon = match change.change.as_str() {
+                    "connected" => "▲".green().to_string(),
+                    "disconnected" | "tunnel_down" | "process_stopped" => "▼".red().to_string(),
+                    _ => "◆".yellow().to_string(),
+                };
+                println!("  {} VPN {} — {}", icon, change.vpn_name.bright_white(), change.change);
+
+                // Emit brain event
+                let brain_event = serde_json::json!({
+                    "schema_version": 1,
+                    "type": "vpn_change",
+                    "timestamp": change.timestamp,
+                    "vpn_name": change.vpn_name,
+                    "change": change.change,
+                });
+                let event_file = events_dir.join(format!(
+                    "{}-vpn-{}.json",
+                    Local::now().format("%Y%m%d-%H%M%S-%3f"),
+                    change.change
+                ));
+                let _ = std::fs::write(&event_file, serde_json::to_string_pretty(&brain_event).unwrap_or_default());
+            }
+            last_vpn_statuses = new_statuses;
+        }
 
         // Periodic tasks (every 5 min): cleanup + IOC scan
         if last_cleanup.elapsed() > Duration::from_secs(300) {
@@ -563,6 +596,10 @@ async fn api_iocs(
 ) -> axum::Json<Vec<crate::modules::ioc_monitor::IocEvent>> {
     let buf = state.iocs.read().await;
     axum::Json(buf.iter().cloned().collect())
+}
+
+async fn api_vpn() -> axum::Json<Vec<crate::modules::vpn_monitor::VpnStatus>> {
+    axum::Json(crate::modules::vpn_monitor::check_vpn_status())
 }
 
 async fn api_health(

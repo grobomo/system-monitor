@@ -4,6 +4,7 @@ Cargo.lock
 
 # Old TS artifacts
 archive_*
+archive/
 node_modules/
 dist/
 
