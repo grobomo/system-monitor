@@ -118,6 +118,15 @@
   - One-screen summary with color-coded bars
   - API: GET /api/status for programmatic access
 
+## Phase 11: Bundle Architecture
+- [ ] T033: Document bundle architecture — system-monitor as orchestrator of standalone tools
+- [ ] T034: Extract vpn-monitor crate — standalone CLI + library for VPN detection/status
+- [ ] T035: Extract disk-monitor crate — standalone CLI + library for disk usage/cleanup
+- [ ] T036: Extract process-monitor crate — standalone CLI + library for process tree/classification
+- [ ] T037: Extract ioc-monitor crate — standalone CLI + library for Windows Event Log IOC scanning
+- [ ] T038: Extract claude-sessions crate — standalone CLI + library for Claude tab collision detection
+- [ ] T039: Integrate standalone vpn-monitor (Python reconnect) as managed service
+
 ## Future Work
 - [ ] Replace polling daemon with ETW real-time process events
 - [ ] Implement UAC event tracking via Windows Event Log API (Security 4688)
