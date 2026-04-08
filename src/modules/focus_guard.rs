@@ -117,6 +117,7 @@ pub async fn run() -> anyhow::Result<()> {
             .route("/api/vpn", get(api_vpn))
             .route("/api/claude-sessions", get(api_claude_sessions))
             .route("/api/disk", get(api_disk))
+            .route("/api/status", get(api_status))
             .with_state(dashboard_state);
 
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", DASHBOARD_PORT))
@@ -667,6 +668,10 @@ async fn api_claude_sessions() -> axum::Json<crate::modules::claude_sessions::Se
 
 async fn api_disk() -> axum::Json<crate::modules::disk_monitor::DiskReport> {
     axum::Json(crate::modules::disk_monitor::scan())
+}
+
+async fn api_status() -> axum::Json<crate::modules::status::SystemStatus> {
+    axum::Json(crate::modules::status::get_status())
 }
 
 async fn api_health(

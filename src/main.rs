@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
             modules::uac_tracker::show_uac_events(last).await?;
         }
         Some(Commands::Status) => {
-            println!("system-monitor status — not yet implemented (T012)");
+            modules::status::show_status();
         }
         Some(Commands::Daemon) => {
             modules::daemon::run().await?;

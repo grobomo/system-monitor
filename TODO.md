@@ -111,8 +111,14 @@
   - Fix: disabled task, killed orphaned processes
   - Residual CMD spawns (~4/min) all from Claude Code sessions — expected behavior, not focus-stealing
 
+## Phase 10: Status Command
+- [ ] T032: Implement `status` command with real system metrics (CPU, memory, disk, network)
+  - CPU load via Win32_Processor, memory via Win32_OperatingSystem
+  - Drive space from disk_monitor, VPN from vpn_monitor, Claude sessions from claude_sessions
+  - One-screen summary with color-coded bars
+  - API: GET /api/status for programmatic access
+
 ## Future Work
-- [ ] Implement `status` command with real system metrics (CPU, memory, disk, network)
 - [ ] Replace polling daemon with ETW real-time process events
 - [ ] Implement UAC event tracking via Windows Event Log API (Security 4688)
 - [ ] Add AnalysisEngine trait with BrainEngine impl (shared with github-agent)
