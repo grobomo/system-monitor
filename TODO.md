@@ -127,6 +127,14 @@
 - [ ] T038: Extract claude-sessions crate — standalone CLI + library for Claude tab collision detection
 - [ ] T039: Integrate standalone vpn-monitor (Python reconnect) as managed service
 
+## Phase 12: Focus Steal Prevention (Enforcement)
+- [ ] T040: Active focus-steal prevention — hide/close CMD popups in real-time
+  - Diagnose current sources of focus-stealing CMD/PS windows
+  - Extend focus-guard from observer to enforcer: detect + hide visible CMD windows
+  - Use Win32 ShowWindow(SW_HIDE) on newly spawned CMD/PS windows that aren't from terminals
+  - Whitelist: windows inside terminal emulators (conpty), user-launched terminals
+  - Must not hide legitimate user terminals — only transient script-spawned windows
+
 ## Future Work
 - [ ] Replace polling daemon with ETW real-time process events
 - [ ] Implement UAC event tracking via Windows Event Log API (Security 4688)
