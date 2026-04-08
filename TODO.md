@@ -59,7 +59,7 @@
   - CLI: `system-monitor vpn` with verified/unverified/disconnected indicators
   - API: GET /api/vpn
   - Guard integration: polls every 60s, emits brain events on connect/disconnect/tunnel_down
-- [ ] T014: Add disk-monitor as a module — disk usage, git hygiene, cleanup suggestions
+- [x] T014: Add disk-monitor as a module — drive space, project sizes, cleanup suggestions (PR #5)
 - [x] T015: Add ioc-monitor module — Windows Event Log scanning for IOCs
   - wevtutil via PowerShell for System log (Security requires elevation)
   - Event IDs: 4625, 4688, 4697, 7045, 1102, 4720, 4732
@@ -123,12 +123,8 @@
 
 ## Session State (2026-04-08 session 2)
 - T027: Claude tab collision detection COMPLETE (PR #4)
-  - PEB-based CWD discovery (NtQueryInformationProcess + ReadProcessMemory)
-  - CLI: `system-monitor claude-tabs`, API: GET /api/claude-sessions
-  - Guard integration: 30s polling + brain events on collision
-  - Tested: correctly identified 5 sessions across 4 project dirs, zero false positives
-- T013: VPN monitor (PR #3), T028-T031: CMD diagnosis (PR #3) — merged
-- Remaining unchecked: T014 (disk-monitor), T016 (daily digest), T018 (brain consumer)
+- T014: Disk monitor COMPLETE (PR #5)
+- Remaining unchecked: T016 (daily digest), T018 (brain consumer)
 - Also: github-agent scheduled task is DISABLED (service.bat needs fixing)
 
 ## Build Notes
