@@ -1,9 +1,12 @@
 //! Active focus-steal prevention.
 //!
-//! Two-pronged approach:
-//! 1. SetWinEventHook: intercepts FOREGROUND events and restores focus if stolen
-//!    by a transient CMD/bash/PS process from Claude Code
-//! 2. Backup polling: hides visible console windows owned by transient processes
+//! Three-layer defense:
+//! 1. Registry: ForegroundLockTimeout set to MAX
+//! 2. Event hooks: SetWinEventHook for real-time interception (CREATE + SHOW + FOREGROUND)
+//! 3. Polling backup: hides visible console windows from transient processes
+//!
+//! Key insight: EVENT_OBJECT_CREATE fires BEFORE the window renders,
+//! giving us a chance to hide it before the user sees it.
 
 use colored::Colorize;
 use std::collections::HashSet;
@@ -13,20 +16,20 @@ use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
 use windows::Win32::UI::Accessibility::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
-/// Process names that spawn transient windows (the parent chain)
+/// Process names that spawn transient windows (parent chain)
 const TRANSIENT_PARENTS: &[&str] = &[
     "claude.exe",
     "node.exe",
     "wscript.exe",
     "cscript.exe",
     "terraform.exe",
-    "terraform-provider-azurerm", // prefix match — version suffix varies
+    "terraform-provider-azurerm",
     "python.exe",
     "pythonw.exe",
     "go.exe",
 ];
 
-/// Process names whose focus-stealing we intercept
+/// Process names whose windows we intercept
 const INTERCEPT_TARGETS: &[&str] = &[
     "cmd.exe",
     "powershell.exe",
@@ -36,52 +39,39 @@ const INTERCEPT_TARGETS: &[&str] = &[
     "openconsole.exe",
 ];
 
-/// Window class names for console windows
-const CONSOLE_CLASSES: &[&str] = &[
-    "ConsoleWindowClass",
-    "CASCADIA_HOSTING_WINDOW_CLASS",
-    "PseudoConsoleWindow",
-    "mintty",
-];
-
-static RESTORED_COUNT: AtomicUsize = AtomicUsize::new(0);
 static HIDDEN_COUNT: AtomicUsize = AtomicUsize::new(0);
-/// The HWND that had focus before a steal — we restore focus here
+static RESTORED_COUNT: AtomicUsize = AtomicUsize::new(0);
 static LAST_GOOD_HWND: AtomicIsize = AtomicIsize::new(0);
 
 /// Run the focus enforcer standalone.
 pub fn run_enforcer() -> anyhow::Result<()> {
     println!("{}", "=== Focus Steal Shield ===".bold().green());
-    println!("Protecting against focus theft by transient CMD/bash/PS windows");
-    println!("Strategy: intercept focus changes + hide transient console windows");
+    println!("Intercepting transient CMD/bash/PS windows in real-time");
     println!("Press Ctrl+C to stop\n");
 
     install_event_hooks();
-
-    // Set ForegroundLockTimeout via registry — prevents background windows from stealing focus
-    // They'll flash in the taskbar instead. User can still Alt+Tab / click normally.
     set_foreground_lock_timeout(0xFFFFFFFF);
 
     let mut known_hidden: HashSet<isize> = HashSet::new();
     let mut stats_interval = Instant::now();
 
-    // Set up Ctrl+C handler to restore default timeout on exit
     ctrlc::set_handler(move || {
-        set_foreground_lock_timeout(200000); // restore default
-        println!("\n{}", "  Foreground lock timeout restored to default. Exiting.".yellow());
+        set_foreground_lock_timeout(200000);
+        println!("\n{}", "  Foreground lock timeout restored. Exiting.".yellow());
         std::process::exit(0);
     })
     .ok();
 
     loop {
+        // Pump messages — CRITICAL: hooks only fire if we pump
         pump_messages();
 
-        // Backup: hide any visible transient console windows
+        // Backup polling
         let hidden = enforce_once(&mut known_hidden);
         if hidden > 0 {
             let total = HIDDEN_COUNT.load(Ordering::Relaxed);
             println!(
-                "  {} hid {} window(s) ({} total hidden)",
+                "  {} hid {} window(s) ({} total)",
                 "HIDE".yellow().bold(),
                 hidden,
                 total
@@ -92,12 +82,9 @@ pub fn run_enforcer() -> anyhow::Result<()> {
             stats_interval = Instant::now();
             let restored = RESTORED_COUNT.load(Ordering::Relaxed);
             let hidden_total = HIDDEN_COUNT.load(Ordering::Relaxed);
-            known_hidden.retain(|h| {
-                let hwnd = HWND(*h as *mut _);
-                unsafe { IsWindow(hwnd).as_bool() }
-            });
+            known_hidden.retain(|h| unsafe { IsWindow(HWND(*h as *mut _)).as_bool() });
             println!(
-                "  {} focus restored: {}, windows hidden: {}, handles tracked: {}",
+                "  {} focus restored: {}, windows hidden: {}, tracked: {}",
                 "STATS".cyan(),
                 restored,
                 hidden_total,
@@ -105,38 +92,41 @@ pub fn run_enforcer() -> anyhow::Result<()> {
             );
         }
 
-        std::thread::sleep(Duration::from_millis(200));
+        // Tight loop — 50ms for faster interception
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 
 /// Restore default ForegroundLockTimeout and exit.
 pub fn restore_defaults() {
     set_foreground_lock_timeout(200000);
-    println!("{}", "Foreground lock timeout restored to default (200000ms)".green());
+    println!(
+        "{}",
+        "Foreground lock timeout restored to default (200000ms)".green()
+    );
 }
 
-/// Install event hooks for real-time focus-steal interception.
+/// Install event hooks for window interception.
 fn install_event_hooks() {
     unsafe {
-        // Track the current foreground window as "last good"
         let fg = GetForegroundWindow();
         if !fg.0.is_null() {
             LAST_GOOD_HWND.store(fg.0 as isize, Ordering::SeqCst);
         }
 
-        // Hook foreground changes — fires when any window takes focus
-        let _hook = SetWinEventHook(
-            EVENT_SYSTEM_FOREGROUND,
-            EVENT_SYSTEM_FOREGROUND,
+        // EVENT_OBJECT_CREATE: fires BEFORE window is shown — earliest interception point
+        let _hook_create = SetWinEventHook(
+            EVENT_OBJECT_CREATE,
+            EVENT_OBJECT_CREATE,
             None,
-            Some(foreground_callback),
+            Some(create_callback),
             0,
             0,
             WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
         );
 
-        // Hook window show events
-        let _hook2 = SetWinEventHook(
+        // EVENT_OBJECT_SHOW: fires when window becomes visible
+        let _hook_show = SetWinEventHook(
             EVENT_OBJECT_SHOW,
             EVENT_OBJECT_SHOW,
             None,
@@ -145,12 +135,77 @@ fn install_event_hooks() {
             0,
             WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
         );
+
+        // EVENT_SYSTEM_FOREGROUND: fires when window takes focus
+        let _hook_fg = SetWinEventHook(
+            EVENT_SYSTEM_FOREGROUND,
+            EVENT_SYSTEM_FOREGROUND,
+            None,
+            Some(foreground_callback),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+        );
     }
 
-    println!("{}", "  Event hooks installed".green());
+    println!("{}", "  Event hooks installed (CREATE + SHOW + FOREGROUND)".green());
 }
 
-/// Called when a window takes foreground focus.
+/// Fires when ANY window is created — hide transient console windows immediately.
+unsafe extern "system" fn create_callback(
+    _hook: HWINEVENTHOOK,
+    _event: u32,
+    hwnd: HWND,
+    id_object: i32,
+    _id_child: i32,
+    _id_event_thread: u32,
+    _dwms_event_time: u32,
+) {
+    // Only handle OBJID_WINDOW (0) — not child objects
+    if hwnd.0.is_null() || id_object != 0 {
+        return;
+    }
+
+    let mut pid: u32 = 0;
+    GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    if pid == 0 || pid == std::process::id() {
+        return;
+    }
+
+    if is_transient_stealer(pid) {
+        // Hide immediately — before it renders
+        let _ = ShowWindow(hwnd, SW_HIDE);
+        HIDDEN_COUNT.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+/// Fires when a window becomes visible.
+unsafe extern "system" fn show_callback(
+    _hook: HWINEVENTHOOK,
+    _event: u32,
+    hwnd: HWND,
+    id_object: i32,
+    _id_child: i32,
+    _id_event_thread: u32,
+    _dwms_event_time: u32,
+) {
+    if hwnd.0.is_null() || id_object != 0 {
+        return;
+    }
+
+    let mut pid: u32 = 0;
+    GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    if pid == 0 || pid == std::process::id() {
+        return;
+    }
+
+    if is_transient_stealer(pid) {
+        let _ = ShowWindow(hwnd, SW_HIDE);
+        HIDDEN_COUNT.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+/// Fires when a window takes foreground — restore focus if stolen.
 unsafe extern "system" fn foreground_callback(
     _hook: HWINEVENTHOOK,
     _event: u32,
@@ -170,68 +225,24 @@ unsafe extern "system" fn foreground_callback(
         return;
     }
 
-    // Is this a transient process stealing focus?
     if is_transient_stealer(pid) {
-        // Hide the offending window
         let _ = ShowWindow(hwnd, SW_HIDE);
         HIDDEN_COUNT.fetch_add(1, Ordering::Relaxed);
 
-        // Restore focus to the last good window
         let last_good = LAST_GOOD_HWND.load(Ordering::SeqCst);
         if last_good != 0 {
-            let restore_hwnd = HWND(last_good as *mut _);
-            if IsWindow(restore_hwnd).as_bool() {
-                let _ = SetForegroundWindow(restore_hwnd);
+            let restore = HWND(last_good as *mut _);
+            if IsWindow(restore).as_bool() {
+                let _ = SetForegroundWindow(restore);
                 RESTORED_COUNT.fetch_add(1, Ordering::Relaxed);
             }
         }
     } else {
-        // This is a legitimate focus change — update last good
         LAST_GOOD_HWND.store(hwnd.0 as isize, Ordering::SeqCst);
     }
 }
 
-/// Called when a window becomes visible.
-unsafe extern "system" fn show_callback(
-    _hook: HWINEVENTHOOK,
-    _event: u32,
-    hwnd: HWND,
-    _id_object: i32,
-    _id_child: i32,
-    _id_event_thread: u32,
-    _dwms_event_time: u32,
-) {
-    if hwnd.0.is_null() {
-        return;
-    }
-
-    // Quick class check
-    let mut class_buf = [0u16; 256];
-    let class_len = GetClassNameW(hwnd, &mut class_buf);
-    if class_len == 0 {
-        return;
-    }
-    let class_name = String::from_utf16_lossy(&class_buf[..class_len as usize]);
-    let is_console = CONSOLE_CLASSES
-        .iter()
-        .any(|c| class_name.eq_ignore_ascii_case(c));
-    if !is_console {
-        return;
-    }
-
-    let mut pid: u32 = 0;
-    GetWindowThreadProcessId(hwnd, Some(&mut pid));
-    if pid == 0 || pid == std::process::id() {
-        return;
-    }
-
-    if is_transient_stealer(pid) {
-        let _ = ShowWindow(hwnd, SW_HIDE);
-        HIDDEN_COUNT.fetch_add(1, Ordering::Relaxed);
-    }
-}
-
-/// Check if a PID is a transient CMD/bash/PS spawned by Claude/node.
+/// Check if a PID is a transient CMD/bash/PS spawned by Claude/node/terraform.
 fn is_transient_stealer(pid: u32) -> bool {
     let (proc_name, ppid) = match get_process_info(pid) {
         Some(info) => info,
@@ -244,7 +255,6 @@ fn is_transient_stealer(pid: u32) -> bool {
         return false;
     }
 
-    // Walk parent chain
     let mut current_pid = ppid;
     let mut visited = HashSet::new();
     visited.insert(pid);
@@ -258,12 +268,10 @@ fn is_transient_stealer(pid: u32) -> bool {
         if let Some((parent_name, grandparent_pid)) = get_process_info(current_pid) {
             let parent_lower = parent_name.to_lowercase();
 
-            // User terminal — not transient, don't intercept
             if is_terminal_emulator(&parent_lower) {
                 return false;
             }
 
-            // Transient spawner — intercept (prefix match for versioned names)
             if TRANSIENT_PARENTS
                 .iter()
                 .any(|t| parent_lower == *t || parent_lower.starts_with(t))
@@ -297,7 +305,6 @@ fn is_terminal_emulator(name: &str) -> bool {
     )
 }
 
-/// Process Windows messages (required for SetWinEventHook callbacks).
 fn pump_messages() {
     unsafe {
         let mut msg = std::mem::zeroed::<MSG>();
@@ -308,68 +315,41 @@ fn pump_messages() {
     }
 }
 
-/// Polling backup: hide visible console windows owned by transient processes.
+/// Polling backup — hide visible console windows from transient processes.
 pub fn enforce_once(known_hidden: &mut HashSet<isize>) -> usize {
-    let windows = find_visible_console_windows();
     let mut hidden_this_cycle = 0;
 
-    for (hwnd_val, pid, _title) in &windows {
-        if known_hidden.contains(hwnd_val) {
-            continue;
-        }
+    unsafe {
+        let mut results: Vec<(isize, u32)> = Vec::new();
+        let _ = EnumWindows(
+            Some(enum_callback),
+            LPARAM(&mut results as *mut _ as isize),
+        );
 
-        if is_transient_stealer(*pid) {
-            let hwnd = HWND(*hwnd_val as *mut _);
-            unsafe {
-                let _ = ShowWindow(hwnd, SW_HIDE);
+        for (hwnd_val, pid) in &results {
+            if known_hidden.contains(hwnd_val) {
+                continue;
             }
-            known_hidden.insert(*hwnd_val);
-            hidden_this_cycle += 1;
-            HIDDEN_COUNT.fetch_add(1, Ordering::Relaxed);
+            if is_transient_stealer(*pid) {
+                let _ = ShowWindow(HWND(*hwnd_val as *mut _), SW_HIDE);
+                known_hidden.insert(*hwnd_val);
+                hidden_this_cycle += 1;
+                HIDDEN_COUNT.fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 
     if known_hidden.len() > 100 {
-        known_hidden.retain(|h| {
-            let hwnd = HWND(*h as *mut _);
-            unsafe { IsWindow(hwnd).as_bool() }
-        });
+        known_hidden.retain(|h| unsafe { IsWindow(HWND(*h as *mut _)).as_bool() });
     }
 
     hidden_this_cycle
 }
 
-fn find_visible_console_windows() -> Vec<(isize, u32, String)> {
-    let mut results: Vec<(isize, u32, String)> = Vec::new();
-
-    unsafe {
-        let _ = EnumWindows(
-            Some(enum_windows_callback),
-            LPARAM(&mut results as *mut _ as isize),
-        );
-    }
-
-    results
-}
-
-unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    let results = &mut *(lparam.0 as *mut Vec<(isize, u32, String)>);
+unsafe extern "system" fn enum_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let results = &mut *(lparam.0 as *mut Vec<(isize, u32)>);
 
     if !IsWindowVisible(hwnd).as_bool() {
-        return BOOL(1);
-    }
-
-    let mut class_buf = [0u16; 256];
-    let class_len = GetClassNameW(hwnd, &mut class_buf);
-    if class_len == 0 {
-        return BOOL(1);
-    }
-    let class_name = String::from_utf16_lossy(&class_buf[..class_len as usize]);
-
-    let is_console = CONSOLE_CLASSES
-        .iter()
-        .any(|c| class_name.eq_ignore_ascii_case(c));
-    if !is_console {
         return BOOL(1);
     }
 
@@ -379,20 +359,11 @@ unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> B
         return BOOL(1);
     }
 
-    let mut title_buf = [0u16; 256];
-    let title_len = GetWindowTextW(hwnd, &mut title_buf);
-    let title = if title_len > 0 {
-        String::from_utf16_lossy(&title_buf[..title_len as usize])
-    } else {
-        String::new()
-    };
-
-    results.push((hwnd.0 as isize, pid, title));
-
+    results.push((hwnd.0 as isize, pid));
     BOOL(1)
 }
 
-/// Set ForegroundLockTimeout registry value and broadcast the change.
+/// Set ForegroundLockTimeout via registry.
 fn set_foreground_lock_timeout(timeout_ms: u32) {
     use std::os::windows::process::CommandExt;
 
@@ -410,25 +381,22 @@ fn set_foreground_lock_timeout(timeout_ms: u32) {
             if timeout_ms == 0xFFFFFFFF {
                 println!(
                     "{}",
-                    "  Foreground lock timeout set to MAX — background windows cannot steal focus"
-                        .green()
-                        .bold()
+                    "  Foreground lock timeout set to MAX".green().bold()
                 );
                 println!(
                     "{}",
-                    "  (You can still switch windows with Alt+Tab / clicking)".dimmed()
+                    "  (Alt+Tab / clicking still works normally)".dimmed()
                 );
             }
         }
         _ => {
             println!(
                 "{}",
-                "  Warning: could not set ForegroundLockTimeout registry value".yellow()
+                "  Warning: could not set ForegroundLockTimeout".yellow()
             );
         }
     }
 
-    // Broadcast WM_SETTINGCHANGE so the setting takes effect immediately
     unsafe {
         let _ = SendMessageTimeoutW(
             HWND_BROADCAST,

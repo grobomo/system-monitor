@@ -75,7 +75,7 @@ const SAFE_ENTERPRISE: &[&str] = &[
     "aggregatorhost.exe",
     // Virtual memory / containers
     "vmmemczygote", "vmmemcmzygote", "vmcompute.exe", "wslservice.exe",
-    // Trend Micro security
+    // Endpoint security agent
     "ntrtscan.exe", "tmwscsvc.exe", "tmlisten.exe", "cntaosmgr.exe",
     "tmssclient.exe", "tmcoreframeworkhost.exe", "tmbmsrv.exe",
     "tmccsf.exe", "tm_netsrv.exe", "tmpfw.exe", "dsa-wrs-app.exe",
@@ -90,7 +90,7 @@ const SAFE_ENTERPRISE: &[&str] = &[
     // SurfaceThunder / SupportAssist
     "stdispatch.exe", "stdownloader.exe", "stagent.exe",
     "serviceshell.exe",
-    // Trend Micro ZTSA
+    // Zero-trust network agent
     "ztsamonitorservice.exe", "ztsawinservice.exe", "ztsawinengine.exe",
     // iVP / VPN
     "ivpagent.exe",
