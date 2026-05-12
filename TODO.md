@@ -15,8 +15,8 @@
 
 ## Phase 11: Bundle Architecture
 - [ ] T036: Extract process-monitor crate — DISPATCHED to sm-process-monitor session (2026-05-11)
-- [ ] T037: Extract ioc-monitor crate — standalone CLI + library for Windows Event Log IOC scanning
-- [ ] T038: Extract claude-sessions crate — standalone CLI + library for Claude tab collision detection
+- [ ] T037: Extract ioc-monitor crate — DISPATCHED to sm-ioc-monitor session (2026-05-11)
+- [ ] T038: Extract claude-sessions crate — DISPATCHED to sm-claude-sessions session (2026-05-11)
 - [ ] T039: Integrate standalone vpn-monitor (Python reconnect) as managed service
 
 ## Phase 12: Focus Steal Prevention (Enforcement)
@@ -50,8 +50,11 @@
 - T-STRIP: Complete — stripped brand refs from secret-scan.yml + classifier.rs
 - T040: Hooks audit complete. 12/13 spawn sites already had windowsHide. One fix (haiku-client.js)
   dispatched as T657 to hook-runner project. Claude Code Bash tool has no configurable flags.
-- T036: Dispatched to sm-process-monitor session (TODO.md written with full extraction spec)
-- NEXT: T037 (ioc-monitor extraction), T038 (claude-sessions extraction), T016 (daily digest)
+- T036: Dispatched to sm-process-monitor session
+- T037: Dispatched to sm-ioc-monitor session
+- T038: Dispatched to sm-claude-sessions session
+- All three extraction sessions running in parallel tabs
+- NEXT: T039 (Python vpn-monitor integration), T016 (daily digest), T018 (brain consumer)
 - BLOCKED: T040 final close waiting on T657 in hook-runner
 
 ## Build Notes
